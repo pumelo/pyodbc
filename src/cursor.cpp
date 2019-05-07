@@ -937,11 +937,14 @@ PyObject* Cursor_execute(PyObject* self, PyObject* args)
 }
 
 
-#define SQL_SOPT_SS_BASE                            1225
-/* Query notification options */
-#define SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT   (SQL_SOPT_SS_BASE+8)
-#define SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT   (SQL_SOPT_SS_BASE+9)
-#define SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS   (SQL_SOPT_SS_BASE+10)
+/* Query notification options
+Only for odbc we have to distinguish here native client requires some other
+constants ....
+
+*/
+#define SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT   1233
+#define SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT   1234
+#define SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS   1235
 
 PyObject* Cursor_executenotify(PyObject* self, PyObject* args, PyObject* kwargs)
 {
@@ -950,14 +953,14 @@ PyObject* Cursor_executenotify(PyObject* self, PyObject* args, PyObject* kwargs)
     // Works only with a one tuple parameter
 
     PyObject *pSql;
-    PyObject *params;
+    PyObject *params = 0;
     char *msg;
     char *service;
     char *timeout;
     static char *kwlist[] = {"pSql", "params", "msg", "service", "timeout", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O$sss", kwlist, &pSql, &params, &msg, &service, &timeout))
     {
-        return 0;
+        return NULL;
     }
 
     Cursor* cursor = Cursor_Validate(self, CURSOR_REQUIRE_OPEN | CURSOR_RAISE_ERROR);
@@ -969,29 +972,25 @@ PyObject* Cursor_executenotify(PyObject* self, PyObject* args, PyObject* kwargs)
         PyErr_SetString(PyExc_TypeError, "The first argument to execute must be a string or unicode query.");
         return 0;
     }
-
     // Set Parameters to notify
-    Py_BEGIN_ALLOW_THREADS
-    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT, msg, SQL_NTS)))
+    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT, (SQLPOINTER)(uintptr_t)msg, SQL_NTS)))
         {
-            // RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", GetConnection(cursor)->hdbc, cursor->hstmt);
-            return 0;
+            return RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", cursor->cnxn->hdbc, cursor->hstmt);
+
     }
-    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS, service, SQL_NTS)))
+    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS, (SQLPOINTER)(uintptr_t)service, SQL_NTS)))
         {
-            // RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", GetConnection(cursor)->hdbc, cursor->hstmt);
-            return 0;
+            return RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", cursor->cnxn->hdbc, cursor->hstmt);
+
     }
 
-    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT, timeout, SQL_NTS)))
+    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT, (SQLPOINTER)(uintptr_t)timeout, SQL_NTS)))
         {
-            // RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", GetConnection(cursor)->hdbc, cursor->hstmt);
-            return 0;
+            return RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", cursor->cnxn->hdbc, cursor->hstmt);
+
     }
-    Py_END_ALLOW_THREADS
-    // Todo: Make curser invalid. So It must be closed after this one query!
+
     // Execute.
-
     return execute(cursor, pSql, params, false);
 }
 
@@ -2341,7 +2340,7 @@ static PyMethodDef Cursor_methods[] =
     { "close",            (PyCFunction)Cursor_close,            METH_NOARGS,                close_doc            },
     { "execute",          (PyCFunction)Cursor_execute,          METH_VARARGS,               execute_doc          },
     { "executemany",      (PyCFunction)Cursor_executemany,      METH_VARARGS,               executemany_doc      },
-    { "executenotify",    (PyCFunction)Cursor_executenotify,    METH_VARARGS,               executenotify_doc    },
+    { "executenotify",    (PyCFunction)Cursor_executenotify,    METH_VARARGS|METH_KEYWORDS, executenotify_doc    },
     { "setinputsizes",    (PyCFunction)Cursor_setinputsizes,    METH_O,                     setinputsizes_doc    },
     { "setoutputsize",    (PyCFunction)Cursor_ignored,          METH_VARARGS,               ignored_doc          },
     { "fetchval",         (PyCFunction)Cursor_fetchval,         METH_NOARGS,                fetchval_doc         },
