@@ -937,6 +937,64 @@ PyObject* Cursor_execute(PyObject* self, PyObject* args)
 }
 
 
+#define SQL_SOPT_SS_BASE                            1225
+/* Query notification options */
+#define SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT   (SQL_SOPT_SS_BASE+8)
+#define SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT   (SQL_SOPT_SS_BASE+9)
+#define SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS   (SQL_SOPT_SS_BASE+10)
+
+PyObject* Cursor_executenotify(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+    // To do: Check if underlying sqldb is mssql. how?
+    // Expect msg and service, probably timeout as kwargs
+    // Works only with a one tuple parameter
+
+    PyObject *pSql;
+    PyObject *params;
+    char *msg;
+    char *service;
+    char *timeout;
+    static char *kwlist[] = {"pSql", "params", "msg", "service", "timeout", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O$sss", kwlist, &pSql, &params, &msg, &service, &timeout))
+    {
+        return 0;
+    }
+
+    Cursor* cursor = Cursor_Validate(self, CURSOR_REQUIRE_OPEN | CURSOR_RAISE_ERROR);
+    if (!cursor)
+        return 0;
+
+    if (!PyString_Check(pSql) && !PyUnicode_Check(pSql))
+    {
+        PyErr_SetString(PyExc_TypeError, "The first argument to execute must be a string or unicode query.");
+        return 0;
+    }
+
+    // Set Parameters to notify
+    Py_BEGIN_ALLOW_THREADS
+    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT, msg, SQL_NTS)))
+        {
+            // RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", GetConnection(cursor)->hdbc, cursor->hstmt);
+            return 0;
+    }
+    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS, service, SQL_NTS)))
+        {
+            // RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", GetConnection(cursor)->hdbc, cursor->hstmt);
+            return 0;
+    }
+
+    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT, timeout, SQL_NTS)))
+        {
+            // RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", GetConnection(cursor)->hdbc, cursor->hstmt);
+            return 0;
+    }
+    Py_END_ALLOW_THREADS
+    // Todo: Make curser invalid. So It must be closed after this one query!
+    // Execute.
+
+    return execute(cursor, pSql, params, false);
+}
+
 static PyObject* Cursor_executemany(PyObject* self, PyObject* args)
 {
     Cursor* cursor = Cursor_Validate(self, CURSOR_REQUIRE_OPEN | CURSOR_RAISE_ERROR);
@@ -2178,6 +2236,15 @@ static char executemany_doc[] =
     "Only the result of the final execution is returned.  See `execute` for a\n" \
     "description of parameter passing the return value.";
 
+static char executenotify_doc[] =
+    "executenotify(sql, seq_of_params, msg, service, timeout) --> Cursor | count | None\n" \
+    "\n" \
+    "Prepare a database query or command and then execute it against all parameter\n" \
+    "sequences  found in the sequence seq_of_params.\n" \
+    "\n" \
+    "Only the result of the final execution is returned.  See `execute` for a\n" \
+    "description of parameter passing the return value.";
+
 static char nextset_doc[] = "nextset() --> True | None\n" \
     "\n" \
     "Jumps to the next resultset if the last sql has multiple resultset." \
@@ -2274,6 +2341,7 @@ static PyMethodDef Cursor_methods[] =
     { "close",            (PyCFunction)Cursor_close,            METH_NOARGS,                close_doc            },
     { "execute",          (PyCFunction)Cursor_execute,          METH_VARARGS,               execute_doc          },
     { "executemany",      (PyCFunction)Cursor_executemany,      METH_VARARGS,               executemany_doc      },
+    { "executenotify",    (PyCFunction)Cursor_executenotify,    METH_VARARGS,               executenotify_doc    },
     { "setinputsizes",    (PyCFunction)Cursor_setinputsizes,    METH_O,                     setinputsizes_doc    },
     { "setoutputsize",    (PyCFunction)Cursor_ignored,          METH_VARARGS,               ignored_doc          },
     { "fetchval",         (PyCFunction)Cursor_fetchval,         METH_NOARGS,                fetchval_doc         },
