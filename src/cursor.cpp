@@ -650,7 +650,11 @@ static PyObject* execute(Cursor* cur, PyObject* pSql, PyObject* params, bool ski
         FreeParameterData(cur);
         return RaiseErrorV(0, ProgrammingError, "The cursor's connection was closed.");
     }
-
+    if (ret == SQL_SUCCESS_WITH_INFO){
+        RaiseErrorFromHandle(cur->cnxn, "SUCCESS_WITH_INFO", cur->cnxn->hdbc, cur->hstmt);
+        FreeParameterData(cur);
+        return 0;
+    }
     if (!SQL_SUCCEEDED(ret) && ret != SQL_NEED_DATA && ret != SQL_NO_DATA)
     {
         // We could try dropping through the while and if below, but if there is an error, we need to raise it before
@@ -813,7 +817,8 @@ static PyObject* execute(Cursor* cur, PyObject* pSql, PyObject* params, bool ski
         Py_INCREF(cur);
         return (PyObject*)cur;
     }
-
+    if (SQL_SUCCESS != ret)
+        return RaiseErrorFromHandle(cur->cnxn, szLastFunction, cur->cnxn->hdbc, cur->hstmt);
     if (!SQL_SUCCEEDED(ret))
         return RaiseErrorFromHandle(cur->cnxn, szLastFunction, cur->cnxn->hdbc, cur->hstmt);
 
@@ -957,6 +962,7 @@ PyObject* Cursor_executenotify(PyObject* self, PyObject* args, PyObject* kwargs)
     char *msg;
     char *service;
     char *timeout;
+    SQLRETURN ret = 0;
     static char *kwlist[] = {"pSql", "params", "msg", "service", "timeout", NULL};
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O$sss", kwlist, &pSql, &params, &msg, &service, &timeout))
     {
@@ -973,18 +979,20 @@ PyObject* Cursor_executenotify(PyObject* self, PyObject* args, PyObject* kwargs)
         return 0;
     }
     // Set Parameters to notify
-    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT, (SQLPOINTER)(uintptr_t)msg, SQL_NTS)))
+    ret = SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_MSGTEXT, (SQLPOINTER)(uintptr_t)msg, SQL_NTS);
+    if (SQL_SUCCESS != ret)
         {
             return RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", cursor->cnxn->hdbc, cursor->hstmt);
 
     }
-    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS, (SQLPOINTER)(uintptr_t)service, SQL_NTS)))
+    ret = SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_OPTIONS, (SQLPOINTER)(uintptr_t)service, SQL_NTS);
+    if (SQL_SUCCESS != ret)
         {
             return RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", cursor->cnxn->hdbc, cursor->hstmt);
 
     }
-
-    if (!SQL_SUCCEEDED(SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT, (SQLPOINTER)(uintptr_t)timeout, SQL_NTS)))
+    ret = SQLSetStmtAttr(cursor->hstmt, SQL_SOPT_SS_QUERYNOTIFICATION_TIMEOUT, (SQLPOINTER)(uintptr_t)timeout, SQL_NTS);
+    if (SQL_SUCCESS != ret)
         {
             return RaiseErrorFromHandle(cursor->cnxn, "SQLSetStmtAttr", cursor->cnxn->hdbc, cursor->hstmt);
 
